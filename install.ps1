@@ -1,7 +1,7 @@
 # SOCKS5 Proxy Installer for Windows
 # Run with: irm https://raw.githubusercontent.com/YOUR_USERNAME/socks5/main/install.ps1 | iex
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 $INSTALL_DIR = "C:\socks5"
 $DANTE_DIR = "C:\dante"
 $REPO_URL = "https://github.com/obapluto-ob/socks5/archive/refs/heads/main.zip"
@@ -61,7 +61,7 @@ python -m pip install -r requirements.txt --quiet
 # ── 6. Setup PostgreSQL Database ───────────────────────────────
 Write-Step "Setting up database..."
 $env:PGPASSWORD = "socks5pass"
-& "C:\Program Files\PostgreSQL\15\bin\psql.exe" -U postgres -c "CREATE DATABASE socks5db;" 2>$null
+& "C:\Program Files\PostgreSQL\15\bin\psql.exe" -U postgres -c "CREATE DATABASE socks5db;" 2>&1 | Out-Null
 
 # Write .env
 $publicIP = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 10)
