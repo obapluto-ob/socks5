@@ -74,7 +74,7 @@ DATABASE_URL=postgresql://postgres:socks5pass@localhost:5432/socks5db
 DANTE_LOG=C:/dante/logs/sockd.log
 DANTE_CONF=C:/dante/sockd.conf
 DANTE_PASSWD=C:/dante/sockd.passwd
-PROXY_PORT=10800
+PROXY_PORT=$proxyPort
 MAX_CONNECTIONS_PER_USER=2
 "@ | Set-Content "$INSTALL_DIR\.env"
 
@@ -91,6 +91,15 @@ Write-Step "Creating admin account..."
 $adminUser = Read-Host "Enter admin username"
 $adminPass = Read-Host "Enter admin password" -AsSecureString
 $adminPassPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($adminPass))
+
+# ── Ask for proxy port ──────────────────────────────────────────
+$proxyPortInput = Read-Host "Enter proxy port (press Enter for default 10800)"
+if ([string]::IsNullOrWhiteSpace($proxyPortInput)) {
+    $proxyPort = 10800
+} else {
+    $proxyPort = [int]$proxyPortInput
+}
+Write-Step "Using proxy port: $proxyPort"
 
 python -c @"
 import sys
@@ -119,13 +128,17 @@ $confContent = Get-Content "$INSTALL_DIR\dante\sockd.conf" -Raw
 $confContent = $confContent -replace "YOUR_NETWORK_INTERFACE", $interface
 $confContent | Set-Content "$DANTE_DIR\sockd.conf"
 
+# Update Dante config with chosen port
+$confContent = $confContent -replace "port = 10800", "port = $proxyPort"
+$confContent | Set-Content "$DANTE_DIR\sockd.conf"
+
 Write-Warn "Download Dante for Windows from https://www.inet.no/dante/ and place sockd.exe in C:\dante\"
 Write-Warn "Press Enter after placing sockd.exe in C:\dante\"
 Read-Host
 
 # ── 10. Open Firewall Port ──────────────────────────────────────
-Write-Step "Opening firewall port 10800..."
-netsh advfirewall firewall add rule name="SOCKS5 Proxy" dir=in action=allow protocol=TCP localport=10800 | Out-Null
+Write-Step "Opening firewall port $proxyPort..."
+netsh advfirewall firewall add rule name="SOCKS5 Proxy" dir=in action=allow protocol=TCP localport=$proxyPort | Out-Null
 
 # ── 11. Register Windows Services ──────────────────────────────
 Write-Step "Registering Windows services for auto-start..."
@@ -151,12 +164,12 @@ Write-Header "SETUP COMPLETE!"
 Write-Host ""
 Write-Host "  Admin Panel:  http://localhost:5000/dashboard" -ForegroundColor White
 Write-Host "  Public IP:    $publicIP" -ForegroundColor White
-Write-Host "  Proxy Port:   10800" -ForegroundColor White
+Write-Host "  Proxy Port:   $proxyPort" -ForegroundColor White
 Write-Host ""
 Write-Host "  Add your brother via the admin panel, then copy" -ForegroundColor Gray
 Write-Host "  the proxy string and send it to him:" -ForegroundColor Gray
 Write-Host ""
-Write-Host "  Format:  username:password@${publicIP}:10800" -ForegroundColor Green
+Write-Host "  Format:  username:password@${publicIP}:${proxyPort}" -ForegroundColor Green
 Write-Host ""
 Write-Host "  He pastes it in Potatso or any SOCKS5 app." -ForegroundColor Gray
 Write-Host ""
