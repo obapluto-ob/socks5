@@ -1,5 +1,5 @@
 # SOCKS5 Proxy Installer for Windows
-# Run with: irm https://raw.githubusercontent.com/YOUR_USERNAME/socks5/main/install.ps1 | iex
+# Run with: irm https://raw.githubusercontent.com/obapluto-ob/socks5/main/install.ps1 | iex
 
 $ErrorActionPreference = "Continue"
 $INSTALL_DIR = "C:\socks5"
@@ -12,14 +12,8 @@ function Write-Header($msg) {
     Write-Host "  $msg" -ForegroundColor Cyan
     Write-Host "========================================" -ForegroundColor Cyan
 }
-
-function Write-Step($msg) {
-    Write-Host "[+] $msg" -ForegroundColor Green
-}
-
-function Write-Warn($msg) {
-    Write-Host "[!] $msg" -ForegroundColor Yellow
-}
+function Write-Step($msg) { Write-Host "[+] $msg" -ForegroundColor Green }
+function Write-Warn($msg) { Write-Host "[!] $msg" -ForegroundColor Yellow }
 
 # ── 1. Check Admin ──────────────────────────────────────────────
 Write-Header "SOCKS5 Proxy Installer"
@@ -44,6 +38,9 @@ choco install python311 -y --no-progress | Out-Null
 Write-Step "Installing PostgreSQL..."
 choco install postgresql15 --params '/Password:socks5pass' -y --no-progress | Out-Null
 
+# Refresh PATH so python/pip are available
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+
 # ── 4. Download Project ─────────────────────────────────────────
 Write-Step "Downloading SOCKS5 project..."
 New-Item -ItemType Directory -Force -Path $INSTALL_DIR | Out-Null
@@ -55,20 +52,28 @@ Copy-Item "$env:TEMP\socks5-main\*" $INSTALL_DIR -Recurse -Force
 # ── 5. Install Python Dependencies ─────────────────────────────
 Write-Step "Installing Python dependencies..."
 Set-Location $INSTALL_DIR
-$env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
 python -m pip install -r requirements.txt --quiet
 
-# ── 6. Setup PostgreSQL Database ───────────────────────────────
+# ── 6. Ask Setup Questions ──────────────────────────────────────
+$adminUser = Read-Host "Enter admin username"
+$adminPass = Read-Host "Enter admin password" -AsSecureString
+$adminPassPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($adminPass))
+
+$proxyPortInput = Read-Host "Enter proxy port (press Enter for default 10800)"
+if ([string]::IsNullOrWhiteSpace($proxyPortInput)) { $proxyPort = 10800 } else { $proxyPort = [int]$proxyPortInput }
+Write-Step "Using proxy port: $proxyPort"
+
+# ── 7. Setup PostgreSQL Database ───────────────────────────────
 Write-Step "Setting up database..."
 $env:PGPASSWORD = "socks5pass"
 & "C:\Program Files\PostgreSQL\15\bin\psql.exe" -U postgres -c "CREATE DATABASE socks5db;" 2>&1 | Out-Null
 
-# Write .env
-$publicIP = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 10)
 # Generate secure random keys
 $secretKey = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | ForEach-Object {[char]$_})
-$jwtKey = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | ForEach-Object {[char]$_})
+$jwtKey    = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | ForEach-Object {[char]$_})
+$publicIP  = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 10)
 
+# Write .env
 @"
 SECRET_KEY=$secretKey
 JWT_SECRET_KEY=$jwtKey
@@ -80,29 +85,16 @@ PROXY_PORT=$proxyPort
 MAX_CONNECTIONS_PER_USER=2
 "@ | Set-Content "$INSTALL_DIR\.env"
 
-# ── 7. Run Migrations ───────────────────────────────────────────
+# ── 8. Run Migrations ───────────────────────────────────────────
 Write-Step "Running database migrations..."
 Set-Location $INSTALL_DIR
 $env:FLASK_APP = "run.py"
-python -m flask db init 2>$null
-python -m flask db migrate -m "initial" 2>$null
+python -m flask db init 2>&1 | Out-Null
+python -m flask db migrate -m "initial" 2>&1 | Out-Null
 python -m flask db upgrade
 
-# ── 8. Create Admin Account ─────────────────────────────────────
+# ── 9. Create Admin Account ─────────────────────────────────────
 Write-Step "Creating admin account..."
-$adminUser = Read-Host "Enter admin username"
-$adminPass = Read-Host "Enter admin password" -AsSecureString
-$adminPassPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($adminPass))
-
-# ── Ask for proxy port ──────────────────────────────────────────
-$proxyPortInput = Read-Host "Enter proxy port (press Enter for default 10800)"
-if ([string]::IsNullOrWhiteSpace($proxyPortInput)) {
-    $proxyPort = 10800
-} else {
-    $proxyPort = [int]$proxyPortInput
-}
-Write-Step "Using proxy port: $proxyPort"
-
 python -c @"
 import sys
 sys.path.insert(0, '$INSTALL_DIR')
@@ -111,69 +103,62 @@ from app.models import Admin
 app = create_app()
 with app.app_context():
     db.create_all()
-    a = Admin(username='$adminUser')
-    a.set_password('$adminPassPlain')
-    db.session.add(a)
-    db.session.commit()
-    print('Admin created.')
+    if not Admin.query.filter_by(username='$adminUser').first():
+        a = Admin(username='$adminUser')
+        a.set_password('$adminPassPlain')
+        db.session.add(a)
+        db.session.commit()
+    print('Admin ready.')
 "@
 
-# ── 9. Setup Dante ──────────────────────────────────────────────
+# ── 10. Setup Dante ─────────────────────────────────────────────
 Write-Step "Setting up Dante SOCKS5..."
 New-Item -ItemType Directory -Force -Path $DANTE_DIR | Out-Null
 New-Item -ItemType Directory -Force -Path "$DANTE_DIR\logs" | Out-Null
 New-Item -ItemType File -Force -Path "$DANTE_DIR\sockd.passwd" | Out-Null
 
-# Detect active network interface
 $interface = (Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1).Name
 $confContent = Get-Content "$INSTALL_DIR\dante\sockd.conf" -Raw
 $confContent = $confContent -replace "YOUR_NETWORK_INTERFACE", $interface
-$confContent | Set-Content "$DANTE_DIR\sockd.conf"
-
-# Update Dante config with chosen port
 $confContent = $confContent -replace "port = 10800", "port = $proxyPort"
 $confContent | Set-Content "$DANTE_DIR\sockd.conf"
 
-Write-Warn "Download Dante for Windows from https://www.inet.no/dante/ and place sockd.exe in C:\dante\"
-Write-Warn "Press Enter after placing sockd.exe in C:\dante\"
+Write-Warn "Download Dante for Windows from https://www.inet.no/dante/"
+Write-Warn "Place sockd.exe in C:\dante\ then press Enter to continue"
 Read-Host
 
-# ── 10. Open Firewall Port ──────────────────────────────────────
+# ── 11. Open Firewall Port ──────────────────────────────────────
 Write-Step "Opening firewall port $proxyPort..."
-netsh advfirewall firewall add rule name="SOCKS5 Proxy" dir=in action=allow protocol=TCP localport=$proxyPort | Out-Null
+netsh advfirewall firewall add rule name="SOCKS5 Proxy" dir=in action=allow protocol=TCP localport=$proxyPort 2>&1 | Out-Null
 
-# ── 11. Register Windows Services ──────────────────────────────
+# ── 12. Register Windows Services ──────────────────────────────
 Write-Step "Registering Windows services for auto-start..."
-
-# Flask service via NSSM
 if (-not (Get-Command nssm -ErrorAction SilentlyContinue)) {
     choco install nssm -y --no-progress | Out-Null
 }
 
-nssm install SOCKS5-Flask python "$INSTALL_DIR\run.py"
-nssm set SOCKS5-Flask AppDirectory $INSTALL_DIR
-nssm set SOCKS5-Flask Start SERVICE_AUTO_START
-nssm start SOCKS5-Flask
+nssm install SOCKS5-Flask python "$INSTALL_DIR\run.py" 2>&1 | Out-Null
+nssm set SOCKS5-Flask AppDirectory $INSTALL_DIR 2>&1 | Out-Null
+nssm set SOCKS5-Flask Start SERVICE_AUTO_START 2>&1 | Out-Null
+nssm start SOCKS5-Flask 2>&1 | Out-Null
 
-# Dante service
-nssm install SOCKS5-Dante "$DANTE_DIR\sockd.exe" "-f $DANTE_DIR\sockd.conf"
-nssm set SOCKS5-Dante AppDirectory $DANTE_DIR
-nssm set SOCKS5-Dante Start SERVICE_AUTO_START
-nssm start SOCKS5-Dante
+nssm install SOCKS5-Dante "$DANTE_DIR\sockd.exe" "-f $DANTE_DIR\sockd.conf" 2>&1 | Out-Null
+nssm set SOCKS5-Dante AppDirectory $DANTE_DIR 2>&1 | Out-Null
+nssm set SOCKS5-Dante Start SERVICE_AUTO_START 2>&1 | Out-Null
+nssm start SOCKS5-Dante 2>&1 | Out-Null
 
-# ── 12. Print Final Credentials ────────────────────────────────
+# ── 13. Print Final Credentials ────────────────────────────────
 Write-Header "SETUP COMPLETE!"
 Write-Host ""
 Write-Host "  Admin Panel:  http://localhost:5000/dashboard" -ForegroundColor White
 Write-Host "  Public IP:    $publicIP" -ForegroundColor White
 Write-Host "  Proxy Port:   $proxyPort" -ForegroundColor White
 Write-Host ""
-Write-Host "  Add your brother via the admin panel, then copy" -ForegroundColor Gray
-Write-Host "  the proxy string and send it to him:" -ForegroundColor Gray
+Write-Host "  Open the admin panel, add a user, copy the proxy string:" -ForegroundColor Gray
 Write-Host ""
-Write-Host "  Format:  username:password@${publicIP}:${proxyPort}" -ForegroundColor Green
+Write-Host "  Format:  emonigatsaucee:xxxx@${publicIP}:${proxyPort}" -ForegroundColor Green
 Write-Host ""
-Write-Host "  He pastes it in Potatso or any SOCKS5 app." -ForegroundColor Gray
+Write-Host "  Paste it in Potatso or any SOCKS5 app." -ForegroundColor Gray
 Write-Host ""
-Write-Host "  Services registered — proxy auto-starts on reboot." -ForegroundColor Cyan
+Write-Host "  Services registered - proxy auto-starts on reboot." -ForegroundColor Cyan
 Write-Host ""
