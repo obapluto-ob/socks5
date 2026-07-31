@@ -65,8 +65,9 @@ $env:PGPASSWORD = "socks5pass"
 
 # Write .env
 $publicIP = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 10)
-$secretKey = [System.Web.Security.Membership]::GeneratePassword(32, 4)
-$jwtKey = [System.Web.Security.Membership]::GeneratePassword(32, 4)
+# Generate secure random keys
+$secretKey = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | ForEach-Object {[char]$_})
+$jwtKey = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | ForEach-Object {[char]$_})
 
 @"
 SECRET_KEY=$secretKey
