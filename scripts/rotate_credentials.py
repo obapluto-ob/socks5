@@ -52,7 +52,7 @@ def rotate_user_credentials(username, app):
 def _kill_dante_connections(username):
     """Reload Dante to drop all active connections."""
     try:
-        subprocess.run(["pkill", "-HUP", "sockd"], check=False)
+        subprocess.run(["sudo", "systemctl", "reload", "danted"], check=False)
     except Exception:
         pass
 
