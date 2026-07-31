@@ -55,7 +55,8 @@ Copy-Item "$env:TEMP\socks5-main\*" $INSTALL_DIR -Recurse -Force
 # ── 5. Install Python Dependencies ─────────────────────────────
 Write-Step "Installing Python dependencies..."
 Set-Location $INSTALL_DIR
-pip install -r requirements.txt --quiet
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+python -m pip install -r requirements.txt --quiet
 
 # ── 6. Setup PostgreSQL Database ───────────────────────────────
 Write-Step "Setting up database..."
@@ -82,9 +83,9 @@ MAX_CONNECTIONS_PER_USER=2
 Write-Step "Running database migrations..."
 Set-Location $INSTALL_DIR
 $env:FLASK_APP = "run.py"
-flask db init 2>$null
-flask db migrate -m "initial" 2>$null
-flask db upgrade
+python -m flask db init 2>$null
+python -m flask db migrate -m "initial" 2>$null
+python -m flask db upgrade
 
 # ── 8. Create Admin Account ─────────────────────────────────────
 Write-Step "Creating admin account..."
