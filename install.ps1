@@ -111,41 +111,20 @@ with app.app_context():
     print('Admin ready.')
 "@
 
-# ── 10. Setup Dante ─────────────────────────────────────────────
-Write-Step "Setting up Dante SOCKS5..."
-New-Item -ItemType Directory -Force -Path $DANTE_DIR | Out-Null
-New-Item -ItemType Directory -Force -Path "$DANTE_DIR\logs" | Out-Null
-New-Item -ItemType File -Force -Path "$DANTE_DIR\sockd.passwd" | Out-Null
-
-$interface = (Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1).Name
-$confContent = Get-Content "$INSTALL_DIR\dante\sockd.conf" -Raw
-$confContent = $confContent -replace "YOUR_NETWORK_INTERFACE", $interface
-$confContent = $confContent -replace "port = 10800", "port = $proxyPort"
-$confContent | Set-Content "$DANTE_DIR\sockd.conf"
-
-Write-Warn "Download Dante for Windows from https://www.inet.no/dante/"
-Write-Warn "Place sockd.exe in C:\dante\ then press Enter to continue"
-Read-Host
-
-# ── 11. Open Firewall Port ──────────────────────────────────────
-Write-Step "Opening firewall port $proxyPort..."
+# ── 10. Open Firewall Ports ──────────────────────────────────────
+Write-Step "Opening firewall ports..."
 netsh advfirewall firewall add rule name="SOCKS5 Proxy" dir=in action=allow protocol=TCP localport=$proxyPort 2>&1 | Out-Null
-
-# ── 12. Register Windows Services ──────────────────────────────
-Write-Step "Registering Windows services for auto-start..."
+netsh advfirewall firewall add rule name="SOCKS5 Flask" dir=in action=allow protocol=TCP localport=5000 2>&1 | Out-Null
+# ── 11. Register Windows Service ───────────────────────────────
+Write-Step "Registering Windows service for auto-start..."
 if (-not (Get-Command nssm -ErrorAction SilentlyContinue)) {
     choco install nssm -y --no-progress | Out-Null
 }
 
-nssm install SOCKS5-Flask python "$INSTALL_DIR\run.py" 2>&1 | Out-Null
-nssm set SOCKS5-Flask AppDirectory $INSTALL_DIR 2>&1 | Out-Null
-nssm set SOCKS5-Flask Start SERVICE_AUTO_START 2>&1 | Out-Null
-nssm start SOCKS5-Flask 2>&1 | Out-Null
-
-nssm install SOCKS5-Dante "$DANTE_DIR\sockd.exe" "-f $DANTE_DIR\sockd.conf" 2>&1 | Out-Null
-nssm set SOCKS5-Dante AppDirectory $DANTE_DIR 2>&1 | Out-Null
-nssm set SOCKS5-Dante Start SERVICE_AUTO_START 2>&1 | Out-Null
-nssm start SOCKS5-Dante 2>&1 | Out-Null
+nssm install SOCKS5-Proxy python "$INSTALL_DIR\run.py" 2>&1 | Out-Null
+nssm set SOCKS5-Proxy AppDirectory $INSTALL_DIR 2>&1 | Out-Null
+nssm set SOCKS5-Proxy Start SERVICE_AUTO_START 2>&1 | Out-Null
+nssm start SOCKS5-Proxy 2>&1 | Out-Null
 
 # ── 13. Print Final Credentials ────────────────────────────────
 Write-Header "SETUP COMPLETE!"
