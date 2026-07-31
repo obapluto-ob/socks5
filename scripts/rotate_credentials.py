@@ -11,27 +11,27 @@ def generate_password(length=12):
 
 
 def rotate_user_credentials(username, app):
-    """Generate new password for user, sync to Dante, emit new credentials via socket."""
-    from app.models import ProxyUser, SystemEvent
+    from app.models import ProxyUser
     from app import db, socketio
     from scripts.sync_dante_users import sync_dante
+    from scripts.credentials import generate_password, save_password_history
 
     with app.app_context():
         user = ProxyUser.query.filter_by(username=username).first()
         if not user:
             return
 
-        new_password = generate_password()
+        new_password = generate_password(user.id)
         user.password = new_password
         user.last_rotated = datetime.utcnow()
         db.session.commit()
+        save_password_history(user.id, new_password)
 
         sync_dante()
         _kill_dante_connections(username)
 
         public_ip = _get_public_ip()
-        proxy_port = app.config["PROXY_PORT"]
-        proxy_string = f"{user.username}:{new_password}@{public_ip}:{proxy_port}"
+        proxy_string = f"{user.username}:{new_password}@{public_ip}:{user.port}"
 
         print("\n" + "=" * 55)
         print("  CREDENTIALS ROTATED — SEND THESE TO YOUR BROTHER")
@@ -44,7 +44,7 @@ def rotate_user_credentials(username, app):
             "password": new_password,
             "proxy_string": proxy_string,
             "host": public_ip,
-            "port": proxy_port,
+            "port": user.port,
             "rotated_at": user.last_rotated.isoformat()
         })
 

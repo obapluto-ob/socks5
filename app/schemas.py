@@ -7,14 +7,13 @@ class AdminSchema(Schema):
 
 class ProxyUserSchema(Schema):
     id = fields.Int(dump_only=True)
-    username = fields.Str(required=True, validate=[
-        validate.Length(min=3),
-        validate.Regexp(r'^[a-zA-Z][a-zA-Z0-9_]{2,}$', error="Username must start with a letter and contain only letters, numbers, underscores.")
-    ])
-    password = fields.Str(required=True, load_only=True, validate=validate.Length(min=4))
+    username = fields.Str(dump_only=True)
+    password = fields.Str(dump_only=True)
+    port = fields.Int(dump_only=True)
     is_active = fields.Bool(dump_default=True)
     created_at = fields.DateTime(dump_only=True)
     last_rotated = fields.DateTime(dump_only=True)
+    proxy_string = fields.Str(dump_only=True)
 
 class LoginSchema(Schema):
     username = fields.Str(required=True)

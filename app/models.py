@@ -19,12 +19,22 @@ class Admin(db.Model):
 class ProxyUser(db.Model):
     __tablename__ = "proxy_users"
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
+    username = db.Column(db.String(80), nullable=False)
     password = db.Column(db.String(255), nullable=False)
+    port = db.Column(db.Integer, unique=True, nullable=False)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_rotated = db.Column(db.DateTime, nullable=True)
     connections = db.relationship("ConnectionLog", backref="user", lazy=True, cascade="all, delete-orphan")
+    password_history = db.relationship("PasswordHistory", backref="user", lazy=True, cascade="all, delete-orphan")
+
+
+class PasswordHistory(db.Model):
+    __tablename__ = "password_history"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("proxy_users.id"), nullable=False)
+    password = db.Column(db.String(255), nullable=False)
+    used_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class ConnectionLog(db.Model):

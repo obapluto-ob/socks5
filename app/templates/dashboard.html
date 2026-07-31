@@ -139,6 +139,7 @@
   <div>
     <span class="status-dot" id="statusDot"></span>
     <span id="statusText" style="font-size:13px;color:#94a3b8;">Connecting...</span>
+    <button class="btn btn-danger btn-sm" style="margin-left:16px;" onclick="logout()">Logout</button>
   </div>
 </div>
 
@@ -170,10 +171,9 @@
     <!-- Users Panel -->
     <div class="card">
       <h3>Proxy Users</h3>
-      <div class="add-user-form">
-        <input type="text" id="newUsername" placeholder="Username" />
-        <input type="password" id="newPassword" placeholder="Password" />
-        <button class="btn btn-success btn-sm" onclick="addUser()">+ Add</button>
+      <div style="margin-bottom:16px;">
+        <button class="btn btn-success" onclick="addUser(event)">+ Add User</button>
+        <span style="font-size:12px;color:#64748b;margin-left:10px;">Username, password & port auto-generated</span>
       </div>
       <table>
         <thead>
@@ -211,6 +211,11 @@
   if (token) {
     document.getElementById("loginOverlay").style.display = "none";
     loadStats();
+  }
+
+  function logout() {
+    localStorage.removeItem("socks5_token");
+    location.reload();
   }
 
   async function doLogin() {
@@ -297,19 +302,23 @@
     log.innerHTML = `<div class="event-item"><span class="event-time">${time}</span><span class="${cls}">${e.message}</span></div>` + log.innerHTML;
   }
 
-  async function addUser() {
-    const username = document.getElementById("newUsername").value.trim();
-    const password = document.getElementById("newPassword").value.trim();
-    if (!username || !password) return;
-    await fetch("/api/users/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
-      body: JSON.stringify({ username, password })
-    });
-    document.getElementById("newUsername").value = "";
-    document.getElementById("newPassword").value = "";
-    loadStats();
-    showToast("User added!");
+  async function addUser(event) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = "Adding...";
+    try {
+      const res = await fetch("/api/users/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify({})
+      });
+      const data = await res.json();
+      loadStats();
+      showToast(`User added! Port: ${data.port}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "+ Add User";
+    }
   }
 
   async function toggleUser(id) {
