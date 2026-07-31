@@ -8,7 +8,7 @@ from config import Config
 db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
-socketio = SocketIO(cors_allowed_origins="*", async_mode="eventlet")
+socketio = SocketIO(cors_allowed_origins="*", async_mode="threading")
 
 def create_app():
     app = Flask(__name__)
@@ -25,6 +25,6 @@ def create_app():
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(users_bp, url_prefix="/api/users")
-    app.register_blueprint(dashboard_bp, url_prefix="/")
+    app.register_blueprint(dashboard_bp)
 
     return app

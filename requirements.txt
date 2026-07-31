@@ -8,5 +8,4 @@ marshmallow-sqlalchemy
 psycopg2-binary
 python-dotenv
 bcrypt
-eventlet
 requests
